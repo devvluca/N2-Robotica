@@ -1,0 +1,67 @@
+# Configuração do Manipulador Planar 2 DOF
+
+robot:
+  name: "Manipulador Planar 2 DOF"
+  link1_length: 0.5  # metros
+  link2_length: 0.3  # metros
+  link1_mass: 1.0    # kg
+  link2_mass: 1.0    # kg
+  joint_limits:
+    min: -3.14159265359  # -π radianos
+    max: 3.14159265359   # π radianos
+
+  # Inércia dos links (cilindro sólido)
+  link_radius: 0.02  # 2cm de raio
+
+simulation:
+  gravity: [0.0, 0.0, -9.81]  # m/s²
+  time_step: 0.001  # 1ms por passo
+  simulation_frequency: 1000  # Hz
+  gui_enabled: true
+
+pid_controller:
+  # PID para junta 1
+  joint1:
+    kp: 50.0
+    ki: 10.0
+    kd: 5.0
+    integral_max: 10.0
+    integral_min: -10.0
+
+  # PID para junta 2
+  joint2:
+    kp: 50.0
+    ki: 10.0
+    kd: 5.0
+    integral_max: 10.0
+    integral_min: -10.0
+
+  # Limites de torque
+  max_torque: 50.0  # N.m
+
+data_logging:
+  enabled: true
+  log_directory: "./logs"
+  log_frequency: 100  # Hz (log a cada 10ms)
+  metrics_file: "metrics.csv"
+  trajectory_file: "trajectory.csv"
+
+node_red:
+  enabled: true
+  host: "localhost"  # Mudar para IP da VPS
+  port: 1880
+  endpoint: "/data/robot"
+  protocol: "http"
+  send_frequency: 10  # Hz (100ms entre envios)
+  timeout: 5  # segundos
+
+perturbation:
+  enabled: true
+  force_magnitude: [1.0, 1.0, 0.0]  # Força em N (x, y, z)
+  force_duration: 0.5  # segundos
+  force_application_point: [0.5, 0.15, 0.0]  # Ponto de aplicação em metros
+
+metrics:
+  collect_detailed: true
+  settling_time_threshold: 0.05  # 5% de erro
+  overshoot_window: 1.0  # segundos após atingir referência

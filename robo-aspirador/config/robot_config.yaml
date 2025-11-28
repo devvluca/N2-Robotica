@@ -1,0 +1,139 @@
+# Configuração do Robô Aspirador Inteligente
+
+robot:
+  name: "Robô Aspirador Inteligente"
+  type: "differential_drive"
+  
+  # Dimensões e propriedades físicas
+  radius: 0.15              # 15cm de raio
+  height: 0.08              # 8cm de altura
+  mass: 5.0                 # 5kg
+  
+  # Motores (velocidade máxima em m/s)
+  max_linear_velocity: 0.5  # 50cm/s
+  max_angular_velocity: 2.0 # rad/s
+  
+  # Controle motor (PID simples)
+  motor_control:
+    kp: 10.0
+    ki: 2.0
+    kd: 1.0
+  
+  # Sensores ultrassônicos
+  ultrasonic_sensors:
+    count: 5                  # 5 sensores
+    range: 1.0                # 1 metro de alcance
+    angle_fov: 15             # 15 graus de abertura
+    angles: [-90, -45, 0, 45, 90]  # Posições relativas em graus
+    noise_std: 0.02           # Ruído padrão em metros
+    update_frequency: 20      # Hz
+  
+  # Aspirador (para simular limpeza)
+  cleaner:
+    width: 0.30               # 30cm de largura de limpeza
+    efficiency: 0.95          # 95% de eficiência
+
+simulation:
+  gravity: [0.0, 0.0, -9.81]
+  time_step: 0.001            # 1ms
+  simulation_frequency: 1000   # 1kHz
+  gui_enabled: true
+  
+mapping:
+  # Mapa de ocupação 2D
+  grid_resolution: 0.1       # 10cm por célula
+  map_width: 10.0             # 10 metros
+  map_height: 8.0             # 8 metros
+  
+  # Rastreamento de cobertura
+  coverage_threshold: 0.5     # Considerar "limpo" se visitado > 50%
+  revisit_penalty: 0.1        # Penalidade para revisitar célula
+  
+learning:
+  # Aprendizado por repetição
+  enabled: true
+  
+  # Estratégia de navegação
+  exploration_strategy: "spiral"  # spiral, random_walk, systematic
+  
+  # Otimização de rota
+  max_iterations: 5           # Máximo de execuções para aprender
+  convergence_threshold: 0.05 # 5% de melhoria
+  
+  # Perseverança vs exploração
+  exploration_rate: 0.3       # 30% de exploração aleatória
+  
+navigation:
+  # Controle de navegação
+  obstacle_threshold: 0.3     # 30cm para evitar obstáculo
+  safety_margin: 0.05         # 5cm de margem de segurança
+  
+  # Turning behavior
+  turn_speed: 0.5             # rad/s ao fazer curva
+  turn_angle: 90              # Ângulo de rotação em graus
+  
+  # Comportamentos
+  enable_wall_following: true
+  enable_obstacle_avoidance: true
+  enable_backtracking: false
+
+data_logging:
+  enabled: true
+  log_directory: "./logs"
+  trajectory_frequency: 10    # Hz (100ms entre pontos)
+  save_maps: true
+  save_trajectories: true
+  export_format: ["csv", "json"]
+
+node_red:
+  enabled: true
+  host: "localhost"
+  port: 1880
+  endpoint: "/vacuum/data"
+  protocol: "http"
+  trajectory_frequency: 5     # Hz (200ms)
+  metrics_frequency: 1        # Hz (1s)
+  timeout: 5
+  retry_count: 3
+
+environment:
+  # Ambiente de teste
+  room_width: 10.0            # 10 metros
+  room_height: 8.0            # 8 metros
+  
+  # Obstáculos (paredes e móveis)
+  obstacles:
+    - name: "wall_top"
+      type: "wall"
+      position: [5.0, 7.5, 0.0]
+      dimensions: [10.0, 0.1, 0.5]
+    
+    - name: "wall_bottom"
+      type: "wall"
+      position: [5.0, 0.5, 0.0]
+      dimensions: [10.0, 0.1, 0.5]
+    
+    - name: "wall_left"
+      type: "wall"
+      position: [0.5, 4.0, 0.0]
+      dimensions: [0.1, 8.0, 0.5]
+    
+    - name: "wall_right"
+      type: "wall"
+      position: [9.5, 4.0, 0.0]
+      dimensions: [0.1, 8.0, 0.5]
+    
+    - name: "furniture_1"
+      type: "obstacle"
+      position: [3.0, 4.0, 0.0]
+      dimensions: [1.0, 1.5, 0.4]
+    
+    - name: "furniture_2"
+      type: "obstacle"
+      position: [7.0, 5.5, 0.0]
+      dimensions: [1.2, 1.0, 0.4]
+
+metrics:
+  collect_detailed: true
+  save_interval: 30           # segundos entre salvamentos
+  performance_window: 60      # segundos para análise

@@ -1,0 +1,18 @@
+2025-11-28 00:25:38,683 - __main__ - INFO - Conectado ao PyBullet em modo GUI
+2025-11-28 00:25:38,729 - __main__ - DEBUG - Ambiente de simulação configurado
+2025-11-28 00:25:38,855 - __main__ - INFO - Robô KUKA iiwa carregado (usando 2 DOF)
+2025-11-28 00:25:38,871 - __main__ - INFO - Alvo criado na posição [0.3, 0.1, 0.0]
+2025-11-28 00:25:38,905 - __main__ - INFO - 2 obstáculos criados
+2025-11-28 00:25:38,908 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:1880
+2025-11-28 00:25:43,005 - src.node_red_client - ERROR - Erro de conexão com Node-RED: HTTPConnectionPool(host='localhost', port=1880): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002163CB7E660>: Failed to establish a new connection: [WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente'))
+2025-11-28 00:25:43,005 - __main__ - WARNING - Falha ao conectar Node-RED (continuando sem integração)
+2025-11-28 00:25:43,006 - __main__ - INFO - Simulação do manipulador planar 2 DOF inicializada
+2025-11-28 00:25:43,006 - __main__ - DEBUG - Referência definida: theta1=0.000, theta2=0.000
+2025-11-28 00:25:43,006 - __main__ - INFO - Perturbação aplicada: F=[1.0, 1.0, 0.0]N em [0.5, 0.15, 0.0]m
+2025-11-28 00:25:43,247 - __main__ - WARNING - Trajetória colide com obstáculos
+2025-11-28 00:25:43,247 - __main__ - DEBUG - Objeto muito distante: 0.510m (precisa ser < 0.15m)
+2025-11-28 00:25:43,248 - __main__ - DEBUG - Referência definida: theta1=0.000, theta2=0.000
+2025-11-28 00:25:43,561 - __main__ - INFO - Métricas salvas em ./logs\metrics_20251128_002543.csv
+2025-11-28 00:25:43,646 - src.node_red_client - DEBUG - Thread de envio assíncrono parada
+2025-11-28 00:25:43,647 - src.node_red_client - INFO - Cliente Node-RED desconectado
+2025-11-28 00:25:43,678 - __main__ - INFO - Simulação encerrada
