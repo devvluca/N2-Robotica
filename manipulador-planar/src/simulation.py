@@ -25,7 +25,7 @@ def setup_simulation(gui=True):
     # p.loadURDF("table/table.urdf", table_pos, p.getQuaternionFromEuler([0, 0, 0]))
 
     # Target tray removed as requested
-    tray_pos = [0.5, 0.45, 0.1]  # Position still defined for arm movement
+    tray_pos = [1.0, 0.50, 0.1]  # Position within arm reach (~1.12m from origin)
     # tray_orn = p.getQuaternionFromEuler([0, 0, 0])
     # p.loadURDF("tray/tray.urdf", tray_pos, tray_orn)
 
@@ -33,12 +33,13 @@ def setup_simulation(gui=True):
     return tray_pos, -1
 
 def create_random_cube():
-    """Spawn a single cube at random position in front of the arm's reach."""
-    angle = random.uniform(-math.pi/12, math.pi/12)  # -15 to 15 degrees (very narrow arc)
-    radius = random.uniform(0.35, 0.45)  # Within arm reach
-    x = radius * math.cos(angle)
-    y = radius * math.sin(angle)
+    """Spawn a single cube in front of the arm's hand (extended position)."""
+    # Braço estendido: mão em ~(1.4, 0). Cubo deve nascer perto da mão.
+    # Links reais: 0.5 + 0.5 + 0.4 = 1.4m de alcance
+    x = random.uniform(1.1, 1.3)  # Na frente, perto do alcance da mão (~1.4m)
+    y = random.uniform(-0.15, 0.15)  # Pequena variação lateral
     pos = [x, y, 0.0]
+    print(f'[SPAWN] Cubo criado em X={x:.3f}, Y={y:.3f}')
     orn = p.getQuaternionFromEuler([0, 0, 0])
     cube_id = p.loadURDF("cube_small.urdf", pos, orn)
     # Random color for visual distinction

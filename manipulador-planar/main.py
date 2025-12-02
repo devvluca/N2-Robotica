@@ -11,57 +11,59 @@ def calculate_distance(pos1, pos2):
     """Calculate 2D distance between two positions."""
     return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
 
-def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.08):
-    """Move arm smoothly towards cube directly with IK."""
+def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max_iterations=20):
+    """Move arm smoothly towards cube using iterative approach."""
     print(f'\n[BUSCA] ===== ABORDAGEM AO CUBO =====')
     print(f'[BUSCA] Alvo: ({cube_pos[0]:.3f}, {cube_pos[1]:.3f})')
     
-    # Calcular IK direto para o cubo
-    print(f'[BUSCA] → Calculando IK...')
+    for iteration in range(max_iterations):
+        # Pegar posição REAL do efetuador no PyBullet
+        ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
+        ee_pos = ee_state[0]  # Posição global XYZ
+        
+        distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
+        print(f'[BUSCA] Iteração {iteration+1}: Mão em ({ee_pos[0]:.3f}, {ee_pos[1]:.3f}), Distância: {distance:.3f}m')
+        
+        if distance < max_distance:
+            print(f'[BUSCA] ✓✓✓ SUCESSO! Distância: {distance:.3f}m < {max_distance:.3f}m')
+            return True
+        
+        # Mover 50% em direção ao cubo
+        move_fraction = 0.5
+        target_x = ee_pos[0] + (cube_pos[0] - ee_pos[0]) * move_fraction
+        target_y = ee_pos[1] + (cube_pos[1] - ee_pos[1]) * move_fraction
+        
+        # Calcular IK
+        ik = controller.kin.inverse_kinematics(target_x, target_y)
+        if ik is None:
+            print(f'[BUSCA] ✗ IK impossível para ({target_x:.3f}, {target_y:.3f})')
+            continue
+        
+        # Movimento suave
+        controller.arm.ramped_move(ik, duration=0.5)
+    
+    # Última tentativa - ir direto ao cubo
+    print(f'[BUSCA] → Tentativa final: ir direto ao cubo')
     ik = controller.kin.inverse_kinematics(cube_pos[0], cube_pos[1])
+    if ik:
+        controller.arm.ramped_move(ik, duration=0.8)
     
-    if ik is None:
-        print(f'[BUSCA] ✗ IK IMPOSSÍVEL')
-        return False
+    ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
+    ee_pos = ee_state[0]
+    final_distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
+    print(f'[BUSCA] Distância final: {final_distance:.3f}m')
     
-    print(f'[BUSCA] ✓ IK OK: θ1={ik[0]:.3f}, θ2={ik[1]:.3f}, θ3={ik[2]:.3f}')
-    
-    # Movimento suave ramped com PID
-    print(f'[BUSCA] → Movimento suave (ramped 1.0s)...')
-    
-    # Log antes
-    angles_before = controller.arm.get_joint_angles()
-    print(f'[BUSCA] - Ângulos antes: θ1={angles_before[0]:.3f}, θ2={angles_before[1]:.3f}, θ3={angles_before[2]:.3f}')
-    
-    controller.arm.ramped_move(ik, duration=1.0)
-    step_many(60)
-    
-    # Verificar distância
-    ee_pos, _ = controller.arm.get_ee_position()
-    distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
-    angles = controller.arm.get_joint_angles()
-    
-    # Calcular FK usando kinematics
-    fk_pos = controller.kin.forward_kinematics(angles)
-    print(f'[BUSCA] Resultado:')
-    print(f'[BUSCA] - PyBullet EE: ({ee_pos[0]:.3f}, {ee_pos[1]:.3f})')
-    print(f'[BUSCA] - FK calculado: ({fk_pos[0]:.3f}, {fk_pos[1]:.3f})')
-    print(f'[BUSCA] - Ângulos: θ1={angles[0]:.3f}, θ2={angles[1]:.3f}, θ3={angles[2]:.3f}')
-    print(f'[BUSCA] - Distância: {distance:.3f}m (threshold: {max_distance:.3f}m)')
-    
-    if distance < max_distance:
-        print(f'[BUSCA] ✓✓✓ SUCESSO!')
+    if final_distance < max_distance * 2:  # Tolerância maior
+        print(f'[BUSCA] ⚠ Tolerância relaxada OK')
         return True
-    else:
-        print(f'[BUSCA] ⚠ Tentando agarrar mesmo assim...')
-        return True
+    return False
 
 def run(doF=3, cycles=6, gui=True):
     if doF == 2:
-        links = [0.2, 0.2]
+        links = [0.5, 0.5]
         urdf = './models/planar_arm_2dof.urdf'
     else:
-        links = [0.2, 0.2, 0.15]
+        links = [0.5, 0.5, 0.4]  # Real URDF lengths: 0.5 + 0.5 + 0.4 = 1.4m
         urdf = './models/planar_arm_3dof.urdf'
 
     tray_pos, obstacle_id = setup_simulation(gui)
@@ -84,13 +86,11 @@ def run(doF=3, cycles=6, gui=True):
             # Aproximação suave ao cubo
             if approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.08):
                 controller.grasp(cube_id)
-                step_many(30)
+                step_many(20)
                 print(f'[SIMULAÇÃO] Cubo agarrado! Levantando...')
-                controller.avoid_and_move(cube_pos[0], cube_pos[1]+0.3, duration=1.0)
-                step_many(60)
+                controller.avoid_and_move(cube_pos[0], cube_pos[1]+0.3, duration=1.2)
                 print(f'[SIMULAÇÃO] Movendo para destino (tray)...')
                 controller.avoid_and_move(tray_pos[0], tray_pos[1], duration=1.5)
-                step_many(60)
                 controller.release(cube_id)
                 print(f'[SIMULAÇÃO] Cubo solto!')
             else:

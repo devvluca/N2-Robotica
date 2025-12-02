@@ -12,13 +12,13 @@ class PlanarArm:
         self.ee_link_name = ee_link_name
         self.dt = 1.0 / 240.0
 
-        # PID gains
-        self.Kp = [4.0] * num_dofs
-        self.Ki = [0.02] * num_dofs
-        self.Kd = [1.0] * num_dofs
+        # PID gains - tuned for smooth yet responsive motion
+        self.Kp = [10.0] * num_dofs
+        self.Ki = [0.01] * num_dofs
+        self.Kd = [2.0] * num_dofs
         self.pid_int = [0.0] * num_dofs
         self.pid_prev = [0.0] * num_dofs
-        self.max_velocity = 2.0
+        self.max_velocity = 4.0
 
         # Metrics
         self.err_log = []
@@ -97,17 +97,21 @@ class PlanarArm:
             self.max_error = max(self.max_error, abs(err))
         self.err_log.append(math.sqrt(err_sq / self.num_dofs))
 
-    def ramped_move(self, target_angles, duration=1.0, steps_per_sec=240):
-        steps = max(2, int(duration * steps_per_sec))
+    def ramped_move(self, target_angles, duration=1.0, steps_per_sec=30):
+        steps = max(15, int(duration * steps_per_sec))
         current = self.get_joint_angles()
         if len(current) != len(target_angles):
             current = [0.0] * len(target_angles)
         for s in range(1, steps+1):
-            alpha = s/steps
-            intermediate = [(1-alpha)*c + alpha*t for c, t in zip(current, target_angles)]
-            self.pid_step(intermediate)
-            p.stepSimulation()
-            time.sleep(1.0/steps_per_sec)
+            # Smooth easing function (ease-in-out cubic)
+            t = s / steps
+            alpha = t * t * (3.0 - 2.0 * t)  # smoothstep
+            intermediate = [(1-alpha)*c + alpha*tgt for c, tgt in zip(current, target_angles)]
+            # Run multiple physics steps per control step for smooth motion
+            for _ in range(8):
+                self.pid_step(intermediate)
+                p.stepSimulation()
+            time.sleep(0.016)  # ~60 FPS for smooth visual
 
     def attach(self, body_id, child_link_index=-1):
         try:
