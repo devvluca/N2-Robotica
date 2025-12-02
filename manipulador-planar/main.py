@@ -7,6 +7,14 @@ from src.control import ArmController
 from src.simulation import setup_simulation, create_random_cube, remove_body, step_many
 import pybullet as p
 
+# Cliente Node-RED para supervisão
+try:
+    from node_red_client import get_client as get_node_red_client
+    NODE_RED_AVAILABLE = True
+except ImportError:
+    NODE_RED_AVAILABLE = False
+    print("[AVISO] Cliente Node-RED não disponível")
+
 def calculate_distance(pos1, pos2):
     """Calculate 2D distance between two positions."""
     return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
@@ -94,11 +102,27 @@ def run(doF=3, cycles=6, gui=True):
     if obstacle_id >= 0:
         controller.register_obstacle(obstacle_id)
 
+    # Inicializar cliente Node-RED para supervisão
+    node_red = None
+    if NODE_RED_AVAILABLE:
+        node_red = get_node_red_client()
+        node_red.send_simulation_start({
+            'dof': doF,
+            'cycles': cycles,
+            'links': links,
+            'tray_pos': list(tray_pos),
+            'obstacle_pos': [1.0, 0.3]
+        })
+
     # spawn limits to ensure IK reach
     reach = sum(links)
     x_range = (0.2, min(1.0, reach - 0.05))
     y_range = (-min(0.4, reach - 0.05), min(0.4, reach - 0.05))
     counter = 0
+    
+    # Estatísticas globais para resumo
+    all_metrics = []
+    simulation_start_time = time.time()
     try:
         while counter < cycles:
             print(f'\n[SIMULAÇÃO] === Iniciando ciclo {counter + 1}/{cycles} ===')
@@ -150,15 +174,60 @@ def run(doF=3, cycles=6, gui=True):
                 
                 controller.release(cube_id)
                 print(f'[SIMULAÇÃO] Cubo solto!')
+                cycle_success = True
+                
+                # Enviar evento para Node-RED
+                if node_red:
+                    node_red.send_event('cube_released', {
+                        'position': [round(ee_pos[0], 3), round(ee_pos[1], 3)],
+                        'tray_distance': round(tray_distance, 3)
+                    })
             else:
                 print(f'[SIMULAÇÃO] AVISO: Não conseguiu chegar perto do cubo em tempo hábil.')
+                cycle_success = False
             
             remove_body(cube_id)
+            
+            # Coletar e enviar métricas do ciclo
+            mean_error = sum(arm.err_log) / len(arm.err_log) if arm.err_log else 0
+            max_overshoot = arm.max_error
+            total_energy = sum(arm.energy_log) if arm.energy_log else 0
+            
+            cycle_metrics = {
+                'mean_error': mean_error,
+                'max_overshoot': max_overshoot,
+                'total_energy': total_energy,
+                'stabilization_time': 0,  # TODO: calcular tempo de estabilização
+                'success': cycle_success
+            }
+            all_metrics.append(cycle_metrics)
+            
+            # Enviar métricas para Node-RED
+            if node_red:
+                node_red.send_cycle_metrics(counter + 1, cycles, cycle_metrics)
+            
             controller.log_metrics()
             counter += 1
             print(f'[SIMULAÇÃO] Ciclo {counter}/{cycles} concluído\n')
             time.sleep(0.5)
+        
+        # Enviar resumo final para Node-RED
+        if node_red and all_metrics:
+            total_time = time.time() - simulation_start_time
+            successful = sum(1 for m in all_metrics if m['success'])
+            node_red.send_simulation_end({
+                'total_cycles': cycles,
+                'successful_cycles': successful,
+                'avg_mean_error': sum(m['mean_error'] for m in all_metrics) / len(all_metrics),
+                'avg_max_overshoot': sum(m['max_overshoot'] for m in all_metrics) / len(all_metrics),
+                'total_energy': sum(m['total_energy'] for m in all_metrics),
+                'total_time': total_time
+            })
+            print(f'\n[NODE-RED] Resumo enviado: {successful}/{cycles} ciclos bem sucedidos')
+            
     finally:
+        if node_red:
+            node_red.close()
         import pybullet as p
         p.disconnect()
 
