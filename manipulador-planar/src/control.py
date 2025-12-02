@@ -126,30 +126,39 @@ class ArmController:
             return waypoints
         
         # Configuração
-        retract_distance = 0.45  # Braço curto - força dobra visível
+        retract_distance = 0.50  # Braço curto - força dobra visível
         safe_y = 0.55           # Y seguro acima do obstáculo (obs em Y=0.30)
+        min_y = -0.15           # Y mínimo seguro (não ir muito para baixo)
+        max_y_low = 0.10        # Y máximo para posição "baixa"
         
         # Determinar de onde para onde vamos
         start_below_obs = start_pos[1] < obs_pos[1]
         target_below_obs = target_y < obs_pos[1]
         
+        # Limitar start_pos[1] para valores seguros
+        clamped_start_y = max(min_y, min(start_pos[1], safe_y))
+        
         print(f'[TRAJETÓRIA] Início Y={start_pos[1]:.2f} ({"ABAIXO" if start_below_obs else "ACIMA"}), Alvo Y={target_y:.2f} ({"ABAIXO" if target_below_obs else "ACIMA"})')
         
         if target_below_obs:
             # ALVO ESTÁ ABAIXO DO OBSTÁCULO (lado DENTRO)
-            # 1. Recolher
-            wp1 = (retract_distance, max(start_pos[1], safe_y) if not start_below_obs else 0.1)
-            # 2. Ir para Y seguro
+            if not start_below_obs:
+                # Partindo de cima, indo para baixo
+                wp1 = (retract_distance, safe_y)
+            else:
+                # Já estamos abaixo - recolher em Y baixo seguro
+                wp1 = (retract_distance, max(min_y, min(start_pos[1], max_y_low)))
             wp2 = (retract_distance, safe_y)
-            # 3. Descer para Y baixo
             wp3 = (0.60, 0.0)
         else:
             # ALVO ESTÁ ACIMA DO OBSTÁCULO (lado FORA ou tray)
-            # 1. Recolher
-            wp1 = (retract_distance, min(start_pos[1], 0.1) if start_below_obs else safe_y)
-            # 2. Ir para Y seguro
+            if start_below_obs:
+                # Partindo de baixo, indo para cima
+                wp1 = (retract_distance, max(min_y, min(start_pos[1], max_y_low)))
+            else:
+                # Já estamos acima - recolher em Y alto
+                wp1 = (retract_distance, safe_y)
             wp2 = (retract_distance, safe_y)
-            # 3. Esticar em Y alto
             wp3 = (0.85, safe_y)
         
         waypoints = [wp1, wp2, wp3]
@@ -157,8 +166,6 @@ class ArmController:
         print(f'[TRAJETÓRIA] 1. Recolhendo: ({wp1[0]:.2f}, {wp1[1]:.2f})')
         print(f'[TRAJETÓRIA] 2. Passando por cima: ({wp2[0]:.2f}, {wp2[1]:.2f})')
         print(f'[TRAJETÓRIA] 3. Preparando: ({wp3[0]:.2f}, {wp3[1]:.2f})')
-        
-        return waypoints
         
         return waypoints
     
@@ -187,19 +194,36 @@ class ArmController:
             # Planejar trajetória alternativa
             waypoints = self.plan_trajectory_around_obstacle([ee_pos[0], ee_pos[1]], target_x, target_y)
             
-            # Executar waypoints com tempo adequado para movimentos suaves
-            time_per_wp = max(1.0, duration / (len(waypoints) + 1))
-            for wp in waypoints:
-                print(f'[CONTROLADOR] → Movendo para waypoint ({wp[0]:.2f}, {wp[1]:.2f})')
-                self.move_to_xy(wp[0], wp[1], time_per_wp)
-                # Pequena pausa para estabilizar
-                for _ in range(30):
+            # Executar waypoints com tempo maior e muita estabilização
+            for i, wp in enumerate(waypoints):
+                print(f'[CONTROLADOR] → Movendo para waypoint {i+1}/{len(waypoints)} ({wp[0]:.2f}, {wp[1]:.2f})')
+                
+                # Verificar se waypoint é alcançável
+                if not self.is_position_reachable(wp[0], wp[1]):
+                    print(f'[CONTROLADOR] ⚠ Waypoint fora do alcance, ajustando...')
+                    reach = sum(self.kin.link_lengths)
+                    r = math.sqrt(wp[0]**2 + wp[1]**2)
+                    if r > reach:
+                        scale = (reach - 0.1) / r
+                        wp = (wp[0] * scale, wp[1] * scale)
+                
+                # Movimento lento e controlado
+                self.move_to_xy(wp[0], wp[1], 2.0)
+                
+                # Longa pausa para estabilizar completamente
+                for _ in range(120):
                     p.stepSimulation()
                     import time as t
                     t.sleep(1/240)
             
-            # Finalmente ir ao destino
-            return self.move_to_xy(target_x, target_y, time_per_wp)
+            # Finalmente ir ao destino com movimento lento
+            self.move_to_xy(target_x, target_y, 2.5)
+            
+            # Estabilização final
+            for _ in range(100):
+                p.stepSimulation()
+            
+            return True
         else:
             return self.move_to_xy(target_x, target_y, duration)
 

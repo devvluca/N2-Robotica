@@ -174,7 +174,8 @@
         <parent link="base"/>
         <child link="link1"/>
         <axis xyz="0 0 1"/>
-        <limit lower="-3.14" upper="3.14" effort="20" velocity="2.0"/>
+        <limit lower="-3.14" upper="3.14" effort="200" velocity="4.0"/>
+        <dynamics damping="0.3" friction="0.05"/>
       </joint>
 
       <!-- junta 2: cotovelo, gira no plano (eixo z) -->
@@ -183,7 +184,8 @@
         <parent link="link1"/>
         <child link="link2"/>
         <axis xyz="0 0 1"/>
-        <limit lower="-3.14" upper="3.14" effort="20" velocity="2.0"/>
+        <limit lower="-3.14" upper="3.14" effort="200" velocity="4.0"/>
+        <dynamics damping="0.3" friction="0.05"/>
       </joint>
 
       <!-- junta 3: pulso, gira no plano (eixo z) -->
@@ -192,6 +194,7 @@
         <parent link="link2"/>
         <child link="link3"/>
         <axis xyz="0 0 1"/>
-        <limit lower="-3.14" upper="3.14" effort="20" velocity="2.0"/>
+        <limit lower="-3.14" upper="3.14" effort="100" velocity="4.0"/>
+        <dynamics damping="0.2" friction="0.03"/>
       </joint>
     </robot>

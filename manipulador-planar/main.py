@@ -11,7 +11,7 @@ def calculate_distance(pos1, pos2):
     """Calculate 2D distance between two positions."""
     return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
 
-def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max_iterations=20):
+def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.15, max_iterations=10):
     """Move arm smoothly towards cube, avoiding obstacles."""
     print(f'\n[BUSCA] ===== ABORDAGEM AO CUBO =====')
     print(f'[BUSCA] Alvo: ({cube_pos[0]:.3f}, {cube_pos[1]:.3f})')
@@ -22,11 +22,10 @@ def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max
     if obstacle:
         print(f'[BUSCA] 🚧 Obstáculo no caminho para o cubo!')
         # Usar navegação com desvio para chegar ao cubo
-        controller.avoid_and_move(cube_pos[0], cube_pos[1], duration=2.5)
+        controller.avoid_and_move(cube_pos[0], cube_pos[1], duration=3.0)
         
         # Verificar distância final
-        ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
-        ee_pos = ee_state[0]
+        ee_pos, _ = controller.arm.get_ee_position()
         final_distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
         print(f'[BUSCA] Distância após desvio: {final_distance:.3f}m')
         
@@ -34,13 +33,21 @@ def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max
             print(f'[BUSCA] ✓✓✓ SUCESSO com desvio!')
             return True
         
-        # Se ainda não chegou, fazer ajuste fino
-        print(f'[BUSCA] Ajuste fino para alcançar cubo...')
+        # Se ainda não chegou, fazer movimento direto com tempo maior
+        print(f'[BUSCA] Movimento direto final ao cubo...')
+        controller.move_to_xy(cube_pos[0], cube_pos[1], duration=2.0)
+        step_many(50)
+        
+        ee_pos, _ = controller.arm.get_ee_position()
+        final_distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
+        if final_distance < max_distance * 1.5:
+            print(f'[BUSCA] ✓✓✓ SUCESSO após ajuste!')
+            return True
+        return False
     
-    # Abordagem iterativa: ir direto ao cubo
+    # Abordagem iterativa: ir direto ao cubo com movimentos longos
     for iteration in range(max_iterations):
-        ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
-        ee_pos = ee_state[0]
+        ee_pos, _ = controller.arm.get_ee_position()
         
         distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
         print(f'[BUSCA] Iteração {iteration+1}: Mão em ({ee_pos[0]:.3f}, {ee_pos[1]:.3f}), Distância: {distance:.3f}m')
@@ -49,24 +56,22 @@ def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max
             print(f'[BUSCA] ✓✓✓ SUCESSO! Distância: {distance:.3f}m < {max_distance:.3f}m')
             return True
         
-        # Movimento mais agressivo - ir 70% da distância
-        move_fraction = 0.7
-        target_x = ee_pos[0] + (cube_pos[0] - ee_pos[0]) * move_fraction
-        target_y = ee_pos[1] + (cube_pos[1] - ee_pos[1]) * move_fraction
+        # Movimento com duração proporcional à distância
+        move_duration = max(1.0, distance * 2)
+        controller.move_to_xy(cube_pos[0], cube_pos[1], duration=move_duration)
         
-        # Usar move_to_xy para movimento mais preciso
-        controller.move_to_xy(target_x, target_y, duration=0.6)
+        # Estabilização
+        step_many(40)
     
     # Última tentativa - ir direto ao cubo com mais tempo
     print(f'[BUSCA] → Tentativa final: ir direto ao cubo')
-    controller.move_to_xy(cube_pos[0], cube_pos[1], duration=1.0)
+    controller.move_to_xy(cube_pos[0], cube_pos[1], duration=1.2)
     
-    ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
-    ee_pos = ee_state[0]
+    ee_pos, _ = controller.arm.get_ee_position()
     final_distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
     print(f'[BUSCA] Distância final: {final_distance:.3f}m')
     
-    if final_distance < max_distance * 2:  # Tolerância maior
+    if final_distance < max_distance * 1.5:  # Tolerância um pouco maior
         print(f'[BUSCA] ⚠ Tolerância relaxada OK')
         return True
     return False
@@ -111,9 +116,38 @@ def run(doF=3, cycles=6, gui=True):
                     print(f'[SIMULAÇÃO] === TESTE DE PERTURBAÇÃO ===')
                     controller.apply_perturbation_test(force_magnitude=10.0)
                 
-                controller.avoid_and_move(cube_pos[0], cube_pos[1]+0.3, duration=1.2)
-                print(f'[SIMULAÇÃO] Movendo para destino (tray)...')
-                controller.avoid_and_move(tray_pos[0], tray_pos[1], duration=1.5)
+                # Levantar o cubo primeiro (posição segura)
+                # Se o cubo estava do lado negativo, precisa desviar do obstáculo
+                print(f'[SIMULAÇÃO] Levantando cubo...')
+                obstacle_y = 0.30  # Posição Y do obstáculo
+                if cube_pos[1] < obstacle_y:  # Cubo estava ABAIXO do obstáculo
+                    # Retrair primeiro para não bater no obstáculo
+                    print(f'[SIMULAÇÃO] Cubo estava abaixo do obstáculo, desviando...')
+                    controller.move_to_xy(0.5, 0.0, duration=1.0)  # Retrair
+                    step_many(30)
+                    controller.move_to_xy(0.5, 0.55, duration=1.0)  # Subir por cima
+                    step_many(30)
+                    controller.move_to_xy(0.8, 0.55, duration=1.0)  # Avançar acima
+                    step_many(30)
+                else:
+                    # Cubo já estava do lado certo, levantar diretamente
+                    controller.move_to_xy(0.8, 0.4, duration=1.5)
+                    step_many(50)
+                
+                # Mover para posição da bandeja (múltiplas tentativas)
+                print(f'[SIMULAÇÃO] Movendo para bandeja ({tray_pos[0]:.2f}, {tray_pos[1]:.2f})...')
+                for attempt in range(3):
+                    controller.move_to_xy(tray_pos[0], tray_pos[1], duration=1.5)
+                    step_many(60)
+                    
+                    # Verificar posição
+                    ee_pos, _ = controller.arm.get_ee_position()
+                    tray_distance = calculate_distance([ee_pos[0], ee_pos[1]], [tray_pos[0], tray_pos[1]])
+                    print(f'[SIMULAÇÃO] Tentativa {attempt+1}: pos=({ee_pos[0]:.2f}, {ee_pos[1]:.2f}), dist={tray_distance:.3f}m')
+                    
+                    if tray_distance < 0.15:
+                        break
+                
                 controller.release(cube_id)
                 print(f'[SIMULAÇÃO] Cubo solto!')
             else:

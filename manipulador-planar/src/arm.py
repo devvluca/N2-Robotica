@@ -12,14 +12,14 @@ class PlanarArm:
         self.ee_link_name = ee_link_name
         self.dt = 1.0 / 240.0
 
-        # PID gains - tuned for smooth yet responsive motion
-        self.Kp = [12.0] * num_dofs
+        # PID gains (for metrics logging only - using position control)
+        self.Kp = [10.0] * num_dofs
         self.Ki = [0.01] * num_dofs
-        self.Kd = [2.5] * num_dofs
+        self.Kd = [2.0] * num_dofs
         self.pid_int = [0.0] * num_dofs
         self.pid_prev = [0.0] * num_dofs
-        self.max_velocity = 3.0
-        self.motor_force = 150
+        self.max_velocity = 3.0  # Velocidade maior
+        self.motor_force = 1000  # Força muito alta para garantir movimento com carga
 
         # Metrics
         self.err_log = []
@@ -76,20 +76,26 @@ class PlanarArm:
         return [x, y, self.base_pos[2]], [0, 0, 0, 1]
 
     def pid_step(self, target_angles):
+        """Usa controle de posição do PyBullet (mais estável que velocidade)."""
         work = 0.0
         for i, j in enumerate(self.arm_joints):
             js = p.getJointState(self.id, j)
             q = js[0] if js is not None else 0.0
             dq = js[1] if js is not None else 0.0
-            e = target_angles[i] - q
-            self.pid_int[i] += e * self.dt
-            d = (e - self.pid_prev[i]) / self.dt
-            cmd = self.Kp[i] * e + self.Ki[i] * self.pid_int[i] + self.Kd[i] * d
-            cmd = max(-self.max_velocity, min(self.max_velocity, cmd))
-            self.pid_prev[i] = e
-            p.setJointMotorControl2(self.id, j, p.VELOCITY_CONTROL, targetVelocity=cmd, force=self.motor_force)
-            work += abs(cmd * dq * self.dt)
+            
+            # Usar controle de posição do PyBullet
+            p.setJointMotorControl2(
+                self.id, j, 
+                p.POSITION_CONTROL, 
+                targetPosition=target_angles[i],
+                force=self.motor_force,
+                maxVelocity=self.max_velocity
+            )
+            work += abs(dq * self.dt)
+        
         self.energy_log.append(work)
+        
+        # Calcular erro para métricas
         err_sq = 0.0
         for i, j in enumerate(self.arm_joints):
             q = p.getJointState(self.id, j)[0]
@@ -99,7 +105,7 @@ class PlanarArm:
         self.err_log.append(math.sqrt(err_sq / self.num_dofs))
 
     def ramped_move(self, target_angles, duration=1.0, steps_per_sec=40):
-        steps = max(20, int(duration * steps_per_sec))
+        steps = max(30, int(duration * steps_per_sec))  # Mínimo 30 passos
         current = self.get_joint_angles()
         if len(current) != len(target_angles):
             current = [0.0] * len(target_angles)
@@ -113,10 +119,10 @@ class PlanarArm:
             alpha = t * t * (3.0 - 2.0 * t)  # smoothstep
             intermediate = [(1-alpha)*c + alpha*tgt for c, tgt in zip(current, target_angles)]
             # Run multiple physics steps per control step for smooth motion
-            for _ in range(10):
+            for _ in range(15):  # Mais passos de física por passo de controle
                 self.pid_step(intermediate)
                 p.stepSimulation()
-            time.sleep(0.012)  # ~80 FPS for smooth visual
+            time.sleep(0.010)  # ~100 FPS
 
     def attach(self, body_id, child_link_index=-1):
         try:
