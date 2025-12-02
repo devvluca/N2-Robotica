@@ -69,18 +69,29 @@ class NodeRedClient:
     def send_start(self, config):
         """Notifica início da execução."""
         payload = {
-            'type': 'execution_start',
+            'type': 'simulation_start',
             'timestamp': time.time(),
+            'execution': config.get('execution', 1),
             'config': config
         }
         self.queue.put(payload)
     
     def send_periodic_update(self, data):
         """Envia atualização periódica."""
+        # Formato esperado pelo Node-RED
         payload = {
             'type': 'periodic_update',
             'timestamp': time.time(),
-            'data': data
+            'execution': data.get('execution', 1),
+            'metrics': {
+                'coverage_percent': data.get('coverage_percent', 0),
+                'covered_area_m2': data.get('covered_area_m2', 0),
+                'energy_consumed': data.get('energy', 0),
+                'time_elapsed_s': data.get('time_elapsed', 0),
+                'distance_traveled': data.get('distance', 0),
+                'collisions': data.get('collisions', 0),
+                'state': data.get('state', 'UNKNOWN')
+            }
         }
         self.queue.put(payload)
     
@@ -98,10 +109,20 @@ class NodeRedClient:
     
     def send_end(self, metrics):
         """Notifica fim da execução."""
+        # Formato esperado pelo Node-RED
         payload = {
-            'type': 'execution_end',
+            'type': 'simulation_end',
             'timestamp': time.time(),
-            'metrics': metrics
+            'execution': metrics.get('execution', 1),
+            'summary': {
+                'coverage_percent': metrics.get('coverage_percent', 0),
+                'covered_area_m2': metrics.get('covered_area_m2', 0),
+                'total_time_s': metrics.get('total_time', 0),
+                'energy_consumed': metrics.get('energy', 0),
+                'distance_traveled': metrics.get('distance', 0),
+                'collisions': metrics.get('collisions', 0),
+                'efficiency': metrics.get('area_per_energy', 0)
+            }
         }
         self.queue.put(payload)
     
