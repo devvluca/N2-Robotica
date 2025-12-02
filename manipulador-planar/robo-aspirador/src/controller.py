@@ -88,16 +88,17 @@ class NavigationController:
             self.state = RobotState.FINISHED
             return 0, 0
         
-        # Detectar estagnação de cobertura
-        if self.frame_count % 150 == 0:
+        # Detectar estagnação ou áreas não visitadas
+        if self.frame_count % 120 == 0:
+            # Verificar progresso
             if abs(coverage - self.last_coverage) < 0.3:
                 self.coverage_stall_count += 1
                 if self.coverage_stall_count >= 2:
-                    # Mudar estratégia - buscar área não limpa
+                    # Forçar busca ativa
                     self.state = RobotState.SEEKING
                     self.coverage_stall_count = 0
-                    # Alternar direção de busca
-                    self.sweep_direction *= -1
+                    # Mudar direção drasticamente
+                    self.target_angle += math.pi / 2
             else:
                 self.coverage_stall_count = 0
             self.last_coverage = coverage
@@ -238,8 +239,8 @@ class NavigationController:
             left_vel = self.forward_speed
             right_vel = self.forward_speed
         
-        # Verificar bordas do mapa
-        margin = 0.25
+        # Verificar bordas do mapa - MARGEM MAIOR
+        margin = 0.35
         if pos[0] < margin or pos[0] > self.env.width - margin:
             return self._start_uturn(pos, angle)
         if pos[1] < margin or pos[1] > self.env.height - margin:
@@ -249,19 +250,28 @@ class NavigationController:
     
     def _seek_uncleaned(self, pos, angle, readings):
         """Busca ativamente áreas não limpas."""
+        # PRIMEIRO: Verificar se está perto da borda
+        margin = 0.35
+        if pos[0] < margin or pos[0] > self.env.width - margin:
+            return self._start_uturn(pos, angle)
+        if pos[1] < margin or pos[1] > self.env.height - margin:
+            return self._start_uturn(pos, angle)
+        
+        # Verificar obstáculos
+        obstacle_info = self._check_obstacles(readings)
+        if obstacle_info['blocked']:
+            return self._start_escape_maneuver(readings, pos)
+        if obstacle_info['wall_ahead']:
+            return self._start_uturn(pos, angle)
+        
         # Encontrar direção para área menos visitada
         best_dir = self._find_uncleaned_direction(pos, angle)
         
         if best_dir is None:
-            # Nenhuma área encontrada - voltar a varrer aleatoriamente
+            # Nenhuma área encontrada - voltar a varrer
             self.state = RobotState.SWEEPING
             self.target_angle = angle + math.pi * 0.5 * self.sweep_direction
             return self.forward_speed, self.forward_speed
-        
-        # Verificar obstáculos primeiro
-        obstacle_info = self._check_obstacles(readings)
-        if obstacle_info['blocked']:
-            return self._start_escape_maneuver(readings, pos)
         
         # Virar na direção
         angle_error = self._normalize_angle(best_dir - angle)
@@ -278,48 +288,60 @@ class NavigationController:
             return self.forward_speed, self.forward_speed
     
     def _find_uncleaned_direction(self, pos, current_angle):
-        """Encontra direção para área com menos visitas."""
+        """Encontra direção para área NÃO VISITADA (prioridade máxima)."""
         from src.mapping import CELL_UNKNOWN, CELL_FREE, CELL_OBSTACLE
         
         best_angle = None
         best_score = float('inf')
+        found_unvisited = False
         
-        # Verificar 24 direções para cobertura mais fina
+        # Verificar 24 direções
         for i in range(24):
             check_angle = (i / 24) * 2 * math.pi
             
             # Verificar múltiplas distâncias
-            total_score = 0
+            direction_score = 0
+            unvisited_count = 0
             valid_checks = 0
             
-            for dist in [0.25, 0.4, 0.6, 0.8]:
+            for dist in [0.2, 0.35, 0.5, 0.7, 0.9]:
                 check_x = pos[0] + dist * math.cos(check_angle)
                 check_y = pos[1] + dist * math.sin(check_angle)
                 
-                # Verificar se está dentro do mapa
-                if check_x < 0.2 or check_x > self.env.width - 0.2:
+                # Verificar se está dentro do mapa - MARGEM MAIOR
+                if check_x < 0.3 or check_x > self.env.width - 0.3:
+                    direction_score += 80  # Penalizar borda forte
                     continue
-                if check_y < 0.2 or check_y > self.env.height - 0.2:
+                if check_y < 0.3 or check_y > self.env.height - 0.3:
+                    direction_score += 80
                     continue
                 
                 gx, gy = self.map.world_to_grid(check_x, check_y)
                 if 0 <= gx < self.map.grid_width and 0 <= gy < self.map.grid_height:
                     cell_state = self.map.grid[gx, gy]
+                    visits = self.map.visit_count[gx, gy]
                     
                     if cell_state == CELL_OBSTACLE:
-                        total_score += 100  # Evitar obstáculos
-                    elif cell_state == CELL_UNKNOWN:
-                        total_score -= 10  # Prioridade alta para desconhecido
+                        direction_score += 200  # Evitar obstáculos fortemente
+                    elif cell_state == CELL_UNKNOWN or visits == 0:
+                        # PRIORIDADE MÁXIMA: área não visitada!
+                        direction_score -= 100
+                        unvisited_count += 1
+                        found_unvisited = True
+                    elif visits == 1:
+                        direction_score -= 20  # Visitou só 1 vez, ok
                     else:
-                        visits = self.map.visit_count[gx, gy]
-                        total_score += visits * 2  # Evitar áreas muito visitadas
+                        direction_score += visits * 10  # Penalizar muito revisitas
                     
                     valid_checks += 1
             
             if valid_checks > 0:
-                avg_score = total_score / valid_checks
-                if avg_score < best_score:
-                    best_score = avg_score
+                # Bônus grande para direções com áreas não visitadas
+                if unvisited_count > 0:
+                    direction_score -= unvisited_count * 50
+                
+                if direction_score < best_score:
+                    best_score = direction_score
                     best_angle = check_angle
         
         return best_angle
@@ -331,6 +353,19 @@ class NavigationController:
         while angle < -math.pi:
             angle += 2 * math.pi
         return angle
+    
+    def _count_unvisited_cells(self):
+        """Conta células não visitadas (excluindo bordas e obstáculos)."""
+        from src.mapping import CELL_UNKNOWN, CELL_OBSTACLE
+        count = 0
+        margin = 3  # Ignorar bordas
+        for gx in range(margin, self.map.grid_width - margin):
+            for gy in range(margin, self.map.grid_height - margin):
+                if self.map.grid[gx, gy] == CELL_UNKNOWN:
+                    count += 1
+                elif self.map.visit_count[gx, gy] == 0 and self.map.grid[gx, gy] != CELL_OBSTACLE:
+                    count += 1
+        return count
     
     def get_state_name(self):
         """Retorna nome do estado atual."""

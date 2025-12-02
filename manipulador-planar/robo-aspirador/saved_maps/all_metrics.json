@@ -2,14 +2,14 @@
   {
     "execution": 1,
     "total_time": 90.0,
-    "real_time": 122.33,
-    "coverage_percent": 85.22,
-    "covered_area_m2": 3.648,
-    "total_cleanable_area_m2": 4.28,
-    "energy": 225.88,
-    "distance": 65.95,
-    "collisions": 82,
-    "efficiency": 0.0025,
-    "area_per_energy": 0.0162
+    "real_time": 119.18,
+    "coverage_percent": 83.83,
+    "covered_area_m2": 3.823,
+    "total_cleanable_area_m2": 4.56,
+    "energy": 231.92,
+    "distance": 52.07,
+    "collisions": 77,
+    "efficiency": 0.0029,
+    "area_per_energy": 0.0165
   }
 ]

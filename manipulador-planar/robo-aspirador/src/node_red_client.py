@@ -10,7 +10,7 @@ from threading import Thread
 from queue import Queue
 
 
-DEFAULT_URL = os.environ.get('NODE_RED_URL', 'https://lucaaguiar.flowfuse.cloud')
+DEFAULT_URL = os.environ.get('NODE_RED_URL', 'https://roboaspirador.flowfuse.cloud')
 
 
 class NodeRedClient:

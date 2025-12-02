@@ -43,6 +43,9 @@ class OccupancyMap:
         self.total_time = 0.0
         self.collisions = 0
         
+        # Máximo de obstáculos detectados (para não diminuir cobertura)
+        self.max_obstacle_cells = 0
+        
     def world_to_grid(self, x, y):
         """Converte coordenadas do mundo para índices do grid."""
         gx = int(x / self.cell_size)
@@ -122,9 +125,15 @@ class OccupancyMap:
         free_cells = np.sum(self.grid == CELL_FREE)
         unknown_cells = np.sum(self.grid == CELL_UNKNOWN)
         
-        cleanable_cells = total_cells - obstacle_cells
+        # Manter máximo de obstáculos (para não diminuir cobertura)
+        self.max_obstacle_cells = max(self.max_obstacle_cells, obstacle_cells)
+        
+        # Usar máximo de obstáculos para cálculo estável
+        cleanable_cells = total_cells - self.max_obstacle_cells
         if cleanable_cells > 0:
             coverage_percent = (free_cells / cleanable_cells) * 100
+            # Limitar a 100%
+            coverage_percent = min(coverage_percent, 100.0)
         else:
             coverage_percent = 0
         
