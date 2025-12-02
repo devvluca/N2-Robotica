@@ -1,0 +1,168 @@
+[
+    {
+        "id": "flow_aspirador",
+        "type": "tab",
+        "label": "Robô Aspirador",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "http_in_aspirador",
+        "type": "http in",
+        "z": "flow_aspirador",
+        "name": "Receber Dados",
+        "url": "/aspirador",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 160,
+        "y": 160,
+        "wires": [
+            [
+                "json_parse"
+            ]
+        ]
+    },
+    {
+        "id": "json_parse",
+        "type": "json",
+        "z": "flow_aspirador",
+        "name": "",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 330,
+        "y": 160,
+        "wires": [
+            [
+                "process_data",
+                "http_resp"
+            ]
+        ]
+    },
+    {
+        "id": "http_resp",
+        "type": "http response",
+        "z": "flow_aspirador",
+        "name": "OK",
+        "statusCode": "200",
+        "headers": {},
+        "x": 490,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "process_data",
+        "type": "function",
+        "z": "flow_aspirador",
+        "name": "Processar Dados",
+        "func": "const d = msg.payload;\nlet txt = '';\nlet fill = 'grey';\n\nswitch(d.type) {\n    case 'simulation_start':\n        txt = `🚀 EXECUÇÃO ${d.execution} INICIADA`;\n        if (d.config.use_previous_map) {\n            txt += ' (com mapa anterior)';\n        }\n        fill = 'blue';\n        break;\n        \n    case 'periodic_update':\n        const m = d.metrics;\n        txt = `📊 Cobertura: ${m.coverage_percent.toFixed(1)}% | `;\n        txt += `Energia: ${m.energy_consumed.toFixed(2)}J | `;\n        txt += `Tempo: ${m.time_elapsed_s.toFixed(0)}s`;\n        fill = 'green';\n        break;\n        \n    case 'simulation_end':\n        const s = d.summary;\n        txt = `🏁 EXECUÇÃO ${d.execution} FINALIZADA\\n`;\n        txt += `   Cobertura: ${s.coverage_percent.toFixed(1)}%\\n`;\n        txt += `   Tempo: ${s.total_time_s.toFixed(1)}s\\n`;\n        txt += `   Energia: ${s.energy_consumed.toFixed(2)}J\\n`;\n        txt += `   Eficiência: ${s.efficiency.toFixed(4)}`;\n        fill = 'blue';\n        break;\n        \n    case 'comparison':\n        txt = '📈 COMPARATIVO DE EXECUÇÕES:\\n';\n        d.executions.forEach(e => {\n            txt += `   Exec ${e.execution}: ${e.coverage_percent.toFixed(1)}% em ${e.total_time.toFixed(0)}s\\n`;\n        });\n        fill = 'yellow';\n        break;\n        \n    case 'trajectory_point':\n        // Silencioso - muitos pontos\n        return null;\n        \n    default:\n        txt = JSON.stringify(d);\n}\n\nnode.status({fill: fill, shape: 'dot', text: d.type});\nmsg.payload = txt;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 520,
+        "y": 160,
+        "wires": [
+            [
+                "debug_aspirador"
+            ]
+        ]
+    },
+    {
+        "id": "debug_aspirador",
+        "type": "debug",
+        "z": "flow_aspirador",
+        "name": "🤖 Aspirador",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "payload",
+        "statusType": "auto",
+        "x": 730,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "inject_test",
+        "type": "inject",
+        "z": "flow_aspirador",
+        "name": "Teste Start",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"type\":\"simulation_start\",\"execution\":1,\"config\":{\"environment_width\":4,\"environment_height\":4,\"use_previous_map\":false}}",
+        "payloadType": "json",
+        "x": 170,
+        "y": 80,
+        "wires": [
+            [
+                "process_data"
+            ]
+        ]
+    },
+    {
+        "id": "inject_update",
+        "type": "inject",
+        "z": "flow_aspirador",
+        "name": "Teste Update",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"type\":\"periodic_update\",\"metrics\":{\"coverage_percent\":45.5,\"energy_consumed\":12.34,\"time_elapsed_s\":30}}",
+        "payloadType": "json",
+        "x": 180,
+        "y": 260,
+        "wires": [
+            [
+                "process_data"
+            ]
+        ]
+    },
+    {
+        "id": "inject_end",
+        "type": "inject",
+        "z": "flow_aspirador",
+        "name": "Teste End",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"type\":\"simulation_end\",\"execution\":1,\"summary\":{\"coverage_percent\":92.5,\"total_time_s\":85,\"energy_consumed\":45.67,\"efficiency\":0.0234}}",
+        "payloadType": "json",
+        "x": 170,
+        "y": 320,
+        "wires": [
+            [
+                "process_data"
+            ]
+        ]
+    }
+]
