@@ -13,12 +13,13 @@ class PlanarArm:
         self.dt = 1.0 / 240.0
 
         # PID gains - tuned for smooth yet responsive motion
-        self.Kp = [10.0] * num_dofs
+        self.Kp = [12.0] * num_dofs
         self.Ki = [0.01] * num_dofs
-        self.Kd = [2.0] * num_dofs
+        self.Kd = [2.5] * num_dofs
         self.pid_int = [0.0] * num_dofs
         self.pid_prev = [0.0] * num_dofs
-        self.max_velocity = 4.0
+        self.max_velocity = 3.0
+        self.motor_force = 150
 
         # Metrics
         self.err_log = []
@@ -56,7 +57,7 @@ class PlanarArm:
         # initialize joints and set to velocity control
         for j in self.arm_joints:
             p.resetJointState(self.id, j, 0.0)
-            p.setJointMotorControl2(self.id, j, p.VELOCITY_CONTROL, targetVelocity=0.0, force=100)
+            p.setJointMotorControl2(self.id, j, p.VELOCITY_CONTROL, targetVelocity=0.0, force=self.motor_force)
 
     def get_joint_angles(self):
         angles = [p.getJointState(self.id, j)[0] for j in self.arm_joints]
@@ -86,7 +87,7 @@ class PlanarArm:
             cmd = self.Kp[i] * e + self.Ki[i] * self.pid_int[i] + self.Kd[i] * d
             cmd = max(-self.max_velocity, min(self.max_velocity, cmd))
             self.pid_prev[i] = e
-            p.setJointMotorControl2(self.id, j, p.VELOCITY_CONTROL, targetVelocity=cmd, force=100)
+            p.setJointMotorControl2(self.id, j, p.VELOCITY_CONTROL, targetVelocity=cmd, force=self.motor_force)
             work += abs(cmd * dq * self.dt)
         self.energy_log.append(work)
         err_sq = 0.0
@@ -97,21 +98,25 @@ class PlanarArm:
             self.max_error = max(self.max_error, abs(err))
         self.err_log.append(math.sqrt(err_sq / self.num_dofs))
 
-    def ramped_move(self, target_angles, duration=1.0, steps_per_sec=30):
-        steps = max(15, int(duration * steps_per_sec))
+    def ramped_move(self, target_angles, duration=1.0, steps_per_sec=40):
+        steps = max(20, int(duration * steps_per_sec))
         current = self.get_joint_angles()
         if len(current) != len(target_angles):
             current = [0.0] * len(target_angles)
+        
+        # Resetar integradores PID para evitar acumulação
+        self.pid_int = [0.0] * self.num_dofs
+        
         for s in range(1, steps+1):
             # Smooth easing function (ease-in-out cubic)
             t = s / steps
             alpha = t * t * (3.0 - 2.0 * t)  # smoothstep
             intermediate = [(1-alpha)*c + alpha*tgt for c, tgt in zip(current, target_angles)]
             # Run multiple physics steps per control step for smooth motion
-            for _ in range(8):
+            for _ in range(10):
                 self.pid_step(intermediate)
                 p.stepSimulation()
-            time.sleep(0.016)  # ~60 FPS for smooth visual
+            time.sleep(0.012)  # ~80 FPS for smooth visual
 
     def attach(self, body_id, child_link_index=-1):
         try:

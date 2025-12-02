@@ -29,23 +29,46 @@ def setup_simulation(gui=True):
     # tray_orn = p.getQuaternionFromEuler([0, 0, 0])
     # p.loadURDF("tray/tray.urdf", tray_pos, tray_orn)
 
-    # Obstacle removed temporarily for debugging
-    return tray_pos, -1
+    # Obstacle - cubo vermelho como obstáculo
+    # Posicionado diretamente no caminho para a tray (1.0, 0.5)
+    obstacle_pos = [1.0, 0.30, 0.0]  # Bem no caminho
+    obstacle_id = p.loadURDF("cube_small.urdf", obstacle_pos, p.getQuaternionFromEuler([0, 0, 0]))
+    p.changeVisualShape(obstacle_id, -1, rgbaColor=[1.0, 0.2, 0.2, 1.0])  # Vermelho
+    # Escalar o obstáculo para ser maior e mais visível
+    # Tornar obstáculo estático (massa = 0)
+    p.changeDynamics(obstacle_id, -1, mass=0)
+    print(f'[SIMULAÇÃO] Obstáculo criado em ({obstacle_pos[0]:.2f}, {obstacle_pos[1]:.2f})')
+    
+    return tray_pos, obstacle_id
+
+# Contador global para alternar posição do cubo
+_cube_spawn_counter = 0
 
 def create_random_cube():
-    """Spawn a single cube in front of the arm's hand (extended position)."""
-    # Braço estendido: mão em ~(1.4, 0). Cubo deve nascer perto da mão.
-    # Links reais: 0.5 + 0.5 + 0.4 = 1.4m de alcance
-    x = random.uniform(1.1, 1.3)  # Na frente, perto do alcance da mão (~1.4m)
-    y = random.uniform(-0.15, 0.15)  # Pequena variação lateral
-    pos = [x, y, 0.0]
-    print(f'[SPAWN] Cubo criado em X={x:.3f}, Y={y:.3f}')
+    """Spawn cubo alternando entre lado de dentro e lado de fora do obstáculo."""
+    global _cube_spawn_counter
+    
+    x = random.uniform(1.0, 1.2)
+    
+    # Alternar: par = dentro (Y negativo), ímpar = fora (Y positivo, após obstáculo)
+    if _cube_spawn_counter % 2 == 0:
+        # Lado de DENTRO (Y negativo) - antes do obstáculo
+        y = random.uniform(-0.15, -0.05)
+        lado = "DENTRO (antes do obstáculo)"
+    else:
+        # Lado de FORA (Y positivo) - logo após o obstáculo em Y=0.3
+        # Posição acessível: Y entre 0.35 e 0.40
+        y = random.uniform(0.35, 0.40)
+        lado = "FORA (depois do obstáculo)"
+    
+    _cube_spawn_counter += 1
+    
+    pos = [x, y, 0.025]
+    print(f'[SPAWN] Cubo criado em X={x:.3f}, Y={y:.3f} - {lado}')
     orn = p.getQuaternionFromEuler([0, 0, 0])
     cube_id = p.loadURDF("cube_small.urdf", pos, orn)
-    # Random color for visual distinction
-    color = [random.random(), random.random(), random.random(), 1.0]
-    p.changeVisualShape(cube_id, -1, rgbaColor=color)
-    return cube_id, pos
+    p.changeVisualShape(cube_id, -1, rgbaColor=[0.2, 0.4, 1.0, 1.0])
+    return cube_id, pos[:2]
 
 def remove_body(body_id):
     try:

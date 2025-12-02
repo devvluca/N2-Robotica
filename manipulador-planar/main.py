@@ -12,14 +12,35 @@ def calculate_distance(pos1, pos2):
     return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
 
 def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max_iterations=20):
-    """Move arm smoothly towards cube using iterative approach."""
+    """Move arm smoothly towards cube, avoiding obstacles."""
     print(f'\n[BUSCA] ===== ABORDAGEM AO CUBO =====')
     print(f'[BUSCA] Alvo: ({cube_pos[0]:.3f}, {cube_pos[1]:.3f})')
     
-    for iteration in range(max_iterations):
-        # Pegar posição REAL do efetuador no PyBullet
+    # Primeiro, verificar se há obstáculo no caminho até o cubo
+    obstacle = controller.check_obstacle_between(cube_pos[0], cube_pos[1])
+    
+    if obstacle:
+        print(f'[BUSCA] 🚧 Obstáculo no caminho para o cubo!')
+        # Usar navegação com desvio para chegar ao cubo
+        controller.avoid_and_move(cube_pos[0], cube_pos[1], duration=2.5)
+        
+        # Verificar distância final
         ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
-        ee_pos = ee_state[0]  # Posição global XYZ
+        ee_pos = ee_state[0]
+        final_distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
+        print(f'[BUSCA] Distância após desvio: {final_distance:.3f}m')
+        
+        if final_distance < max_distance:
+            print(f'[BUSCA] ✓✓✓ SUCESSO com desvio!')
+            return True
+        
+        # Se ainda não chegou, fazer ajuste fino
+        print(f'[BUSCA] Ajuste fino para alcançar cubo...')
+    
+    # Abordagem iterativa: ir direto ao cubo
+    for iteration in range(max_iterations):
+        ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
+        ee_pos = ee_state[0]
         
         distance = calculate_distance([ee_pos[0], ee_pos[1]], cube_pos)
         print(f'[BUSCA] Iteração {iteration+1}: Mão em ({ee_pos[0]:.3f}, {ee_pos[1]:.3f}), Distância: {distance:.3f}m')
@@ -28,25 +49,17 @@ def approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.10, max
             print(f'[BUSCA] ✓✓✓ SUCESSO! Distância: {distance:.3f}m < {max_distance:.3f}m')
             return True
         
-        # Mover 50% em direção ao cubo
-        move_fraction = 0.5
+        # Movimento mais agressivo - ir 70% da distância
+        move_fraction = 0.7
         target_x = ee_pos[0] + (cube_pos[0] - ee_pos[0]) * move_fraction
         target_y = ee_pos[1] + (cube_pos[1] - ee_pos[1]) * move_fraction
         
-        # Calcular IK
-        ik = controller.kin.inverse_kinematics(target_x, target_y)
-        if ik is None:
-            print(f'[BUSCA] ✗ IK impossível para ({target_x:.3f}, {target_y:.3f})')
-            continue
-        
-        # Movimento suave
-        controller.arm.ramped_move(ik, duration=0.5)
+        # Usar move_to_xy para movimento mais preciso
+        controller.move_to_xy(target_x, target_y, duration=0.6)
     
-    # Última tentativa - ir direto ao cubo
+    # Última tentativa - ir direto ao cubo com mais tempo
     print(f'[BUSCA] → Tentativa final: ir direto ao cubo')
-    ik = controller.kin.inverse_kinematics(cube_pos[0], cube_pos[1])
-    if ik:
-        controller.arm.ramped_move(ik, duration=0.8)
+    controller.move_to_xy(cube_pos[0], cube_pos[1], duration=1.0)
     
     ee_state = p.getLinkState(controller.arm.id, controller.arm.eef_link_index)
     ee_pos = ee_state[0]
@@ -71,6 +84,10 @@ def run(doF=3, cycles=6, gui=True):
     arm.load()
     kin = PlanarArmKinematics(links)
     controller = ArmController(arm, kin)
+    
+    # Registrar obstáculo para detecção de colisão
+    if obstacle_id >= 0:
+        controller.register_obstacle(obstacle_id)
 
     # spawn limits to ensure IK reach
     reach = sum(links)
@@ -84,10 +101,16 @@ def run(doF=3, cycles=6, gui=True):
             print(f'[SIMULAÇÃO] Cubo criado na posição: ({cube_pos[0]:.2f}, {cube_pos[1]:.2f})')
             
             # Aproximação suave ao cubo
-            if approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.08):
+            if approach_cube_smoothly(controller, cube_pos, cube_id, max_distance=0.12):
                 controller.grasp(cube_id)
                 step_many(20)
                 print(f'[SIMULAÇÃO] Cubo agarrado! Levantando...')
+                
+                # Teste de perturbação: aplicar força externa e verificar correção
+                if counter == 0:  # Apenas no primeiro ciclo para demonstrar
+                    print(f'[SIMULAÇÃO] === TESTE DE PERTURBAÇÃO ===')
+                    controller.apply_perturbation_test(force_magnitude=10.0)
+                
                 controller.avoid_and_move(cube_pos[0], cube_pos[1]+0.3, duration=1.2)
                 print(f'[SIMULAÇÃO] Movendo para destino (tray)...')
                 controller.avoid_and_move(tray_pos[0], tray_pos[1], duration=1.5)
