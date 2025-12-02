@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from src.robot import VacuumRobot
 from src.environment import Environment
 from src.mapping import OccupancyMap, CELL_OBSTACLE
-from src.controller import NavigationController, RobotState
+from src.controller import NavigationController, SmartNavigationController, RobotState
 from src import node_red_client
 
 
@@ -80,9 +80,13 @@ def run_execution(execution_num, total_executions, previous_map=None,
     # Criar robô (posição inicial num canto livre - longe dos obstáculos)
     robot = VacuumRobot(client, start_pos=[0.4, 0.4], start_angle=0.785)
     
-    # Criar controlador (agora com varredura sistemática)
-    controller = NavigationController(robot, occupancy_map, env)
-    print("[SIM] Usando controlador com VARREDURA SISTEMÁTICA")
+    # Criar controlador - INTELIGENTE se tiver mapa anterior
+    if previous_map is not None:
+        controller = SmartNavigationController(robot, occupancy_map, env, previous_map)
+        print("[SIM] 🧠 Usando controlador INTELIGENTE com aprendizado")
+    else:
+        controller = NavigationController(robot, occupancy_map, env)
+        print("[SIM] Usando controlador com VARREDURA EXPLORATÓRIA")
     
     # Cliente Node-RED
     if send_to_node_red:

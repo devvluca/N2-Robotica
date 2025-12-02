@@ -381,63 +381,198 @@ class NavigationController:
 
 
 class SmartNavigationController(NavigationController):
-    """Controlador inteligente que aprende com execuções anteriores."""
+    """
+    Controlador inteligente que APRENDE com execuções anteriores.
+    
+    Comportamento:
+    - Importa obstáculos conhecidos do mapa anterior (não precisa redescobrir)
+    - Identifica áreas que NÃO foram limpas na execução anterior
+    - Vai DIRETAMENTE para essas áreas primeiro
+    - Evita passar por áreas já bem cobertas anteriormente
+    """
     
     def __init__(self, robot, occupancy_map, environment, previous_map=None):
         super().__init__(robot, occupancy_map, environment)
         
         self.previous_map = previous_map
         self.use_learned = previous_map is not None
+        self.priority_targets = []  # Lista de células prioritárias (não limpas antes)
+        self.current_target = None
         
         if self.use_learned:
-            print("[CTRL] Usando mapa anterior para otimização")
-            self._import_obstacles_from_previous()
+            print("[CTRL] 🧠 MODO APRENDIZADO ATIVO - usando mapa anterior")
+            self._import_knowledge_from_previous()
+            self._identify_priority_areas()
     
-    def _import_obstacles_from_previous(self):
-        """Importa obstáculos conhecidos do mapa anterior."""
+    def _import_knowledge_from_previous(self):
+        """Importa conhecimento do mapa anterior."""
+        if self.previous_map is None:
+            return
+        
+        from src.mapping import CELL_OBSTACLE, CELL_FREE
+        
+        # Importar obstáculos conhecidos
+        obstacle_mask = self.previous_map.grid == CELL_OBSTACLE
+        self.map.grid[obstacle_mask] = CELL_OBSTACLE
+        obstacle_count = np.sum(obstacle_mask)
+        
+        # Importar áreas livres conhecidas
+        free_mask = self.previous_map.grid == CELL_FREE
+        self.map.grid[free_mask] = CELL_FREE
+        
+        print(f"[CTRL] ✓ Importados {obstacle_count} células de obstáculos")
+        print(f"[CTRL] ✓ Mapa inicializado com conhecimento prévio")
+    
+    def _identify_priority_areas(self):
+        """Identifica áreas que NÃO foram bem limpas na execução anterior."""
         if self.previous_map is None:
             return
         
         from src.mapping import CELL_OBSTACLE
         
-        obstacle_mask = self.previous_map.grid == CELL_OBSTACLE
-        self.map.grid[obstacle_mask] = CELL_OBSTACLE
+        margin = 4  # Margem das bordas
+        self.priority_targets = []
         
-        count = np.sum(obstacle_mask)
-        print(f"[CTRL] Importados {count} células de obstáculos")
+        # Encontrar células pouco visitadas na execução anterior
+        for gx in range(margin, self.map.grid_width - margin):
+            for gy in range(margin, self.map.grid_height - margin):
+                # Ignorar obstáculos
+                if self.previous_map.grid[gx, gy] == CELL_OBSTACLE:
+                    continue
+                
+                prev_visits = self.previous_map.visit_count[gx, gy]
+                
+                # Área não visitada ou pouco visitada = PRIORIDADE
+                if prev_visits == 0:
+                    # Converter para coordenadas do mundo
+                    wx, wy = self.map.grid_to_world(gx, gy)
+                    self.priority_targets.append({
+                        'gx': gx, 'gy': gy,
+                        'wx': wx, 'wy': wy,
+                        'priority': 10  # Alta prioridade
+                    })
+                elif prev_visits == 1:
+                    wx, wy = self.map.grid_to_world(gx, gy)
+                    self.priority_targets.append({
+                        'gx': gx, 'gy': gy,
+                        'wx': wx, 'wy': wy,
+                        'priority': 5  # Média prioridade
+                    })
+        
+        # Ordenar por prioridade (maior primeiro)
+        self.priority_targets.sort(key=lambda x: x['priority'], reverse=True)
+        
+        print(f"[CTRL] 🎯 Identificadas {len(self.priority_targets)} células prioritárias")
+        
+        if len(self.priority_targets) > 0:
+            # Definir primeiro alvo
+            self._select_next_target()
     
-    def _explore(self, readings, pos, angle):
-        """Exploração otimizada usando conhecimento anterior."""
-        if not self.use_learned:
-            return super()._explore(readings, pos, angle)
+    def _select_next_target(self):
+        """Seleciona próximo alvo prioritário mais próximo."""
+        if not self.priority_targets:
+            self.current_target = None
+            return
         
-        best_direction = 0
-        min_score = float('inf')
+        pos, _ = self.robot.get_pose()
         
-        directions = [0, math.pi/6, math.pi/3, -math.pi/6, -math.pi/3]
+        # Encontrar alvo prioritário mais próximo
+        min_dist = float('inf')
+        best_idx = 0
         
-        for direction in directions:
-            check_angle = angle + direction
-            check_x = pos[0] + 0.4 * math.cos(check_angle)
-            check_y = pos[1] + 0.4 * math.sin(check_angle)
+        for i, target in enumerate(self.priority_targets[:50]):  # Checar os 50 mais prioritários
+            dist = math.sqrt((target['wx'] - pos[0])**2 + (target['wy'] - pos[1])**2)
+            # Ponderar por prioridade
+            score = dist / (target['priority'] + 1)
+            if score < min_dist:
+                min_dist = score
+                best_idx = i
+        
+        self.current_target = self.priority_targets.pop(best_idx)
+        print(f"[CTRL] → Navegando para ({self.current_target['wx']:.2f}, {self.current_target['wy']:.2f})")
+    
+    def _find_uncleaned_direction(self, pos, current_angle):
+        """
+        Versão melhorada que usa conhecimento do mapa anterior.
+        Prioriza áreas não limpas na execução anterior.
+        """
+        from src.mapping import CELL_UNKNOWN, CELL_FREE, CELL_OBSTACLE
+        
+        # Se temos um alvo prioritário, ir para ele
+        if self.use_learned and self.current_target:
+            # Verificar se chegamos ao alvo
+            dist_to_target = math.sqrt(
+                (self.current_target['wx'] - pos[0])**2 + 
+                (self.current_target['wy'] - pos[1])**2
+            )
             
-            gx, gy = self.map.world_to_grid(check_x, check_y)
-            if 0 <= gx < self.map.grid_width and 0 <= gy < self.map.grid_height:
-                if self.map.grid[gx, gy] != 3:  # CELL_OBSTACLE
-                    prev_visits = self.previous_map.visit_count[gx, gy]
+            if dist_to_target < 0.3:
+                # Chegou - selecionar próximo
+                self._select_next_target()
+                if self.current_target is None:
+                    print("[CTRL] ✓ Todas as áreas prioritárias cobertas!")
+                    return super()._find_uncleaned_direction(pos, current_angle)
+            
+            # Calcular ângulo para o alvo
+            dx = self.current_target['wx'] - pos[0]
+            dy = self.current_target['wy'] - pos[1]
+            return math.atan2(dy, dx)
+        
+        # Fallback para busca padrão
+        best_angle = None
+        best_score = float('inf')
+        
+        # Verificar 24 direções
+        for i in range(24):
+            check_angle = (i / 24) * 2 * math.pi
+            direction_score = 0
+            unvisited_count = 0
+            valid_checks = 0
+            
+            for dist in [0.2, 0.35, 0.5, 0.7, 0.9]:
+                check_x = pos[0] + dist * math.cos(check_angle)
+                check_y = pos[1] + dist * math.sin(check_angle)
+                
+                if check_x < 0.3 or check_x > self.env.width - 0.3:
+                    direction_score += 80
+                    continue
+                if check_y < 0.3 or check_y > self.env.height - 0.3:
+                    direction_score += 80
+                    continue
+                
+                gx, gy = self.map.world_to_grid(check_x, check_y)
+                if 0 <= gx < self.map.grid_width and 0 <= gy < self.map.grid_height:
+                    cell_state = self.map.grid[gx, gy]
                     curr_visits = self.map.visit_count[gx, gy]
                     
-                    score = prev_visits * 0.3 + curr_visits * 2
+                    # Considerar visitas anteriores se disponível
+                    prev_visits = 0
+                    if self.use_learned and self.previous_map is not None:
+                        prev_visits = self.previous_map.visit_count[gx, gy]
                     
-                    if score < min_score:
-                        min_score = score
-                        best_direction = direction
+                    if cell_state == CELL_OBSTACLE:
+                        direction_score += 200
+                    elif curr_visits == 0 and prev_visits == 0:
+                        # Nunca visitada em nenhuma execução = MÁXIMA PRIORIDADE
+                        direction_score -= 150
+                        unvisited_count += 1
+                    elif curr_visits == 0:
+                        # Não visitada nesta execução
+                        direction_score -= 100
+                        unvisited_count += 1
+                    else:
+                        # Penalizar revisitas, considerando histórico
+                        total_visits = curr_visits + prev_visits * 0.5
+                        direction_score += total_visits * 10
+                    
+                    valid_checks += 1
+            
+            if valid_checks > 0:
+                if unvisited_count > 0:
+                    direction_score -= unvisited_count * 50
+                
+                if direction_score < best_score:
+                    best_score = direction_score
+                    best_angle = check_angle
         
-        # Virar na direção
-        error = best_direction
-        turn_rate = np.clip(error * 1.5, -0.5, 0.5)
-        
-        left_vel = self.forward_speed - turn_rate * 0.3
-        right_vel = self.forward_speed + turn_rate * 0.3
-        
-        return np.clip(left_vel, 0.3, 1), np.clip(right_vel, 0.3, 1)
+        return best_angle

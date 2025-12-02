@@ -2,7 +2,7 @@
   {
     "execution": 1,
     "total_time": 60.0,
-    "real_time": 73.15,
+    "real_time": 89.54,
     "coverage_percent": 85.36,
     "covered_area_m2": 3.775,
     "total_cleanable_area_m2": 4.423,
@@ -11,5 +11,31 @@
     "collisions": 38,
     "efficiency": 0.0038,
     "area_per_energy": 0.0244
+  },
+  {
+    "execution": 2,
+    "total_time": 60.0,
+    "real_time": 62.94,
+    "coverage_percent": 86.8,
+    "covered_area_m2": 3.783,
+    "total_cleanable_area_m2": 4.358,
+    "energy": 163.29,
+    "distance": 29.51,
+    "collisions": 53,
+    "efficiency": 0.0043,
+    "area_per_energy": 0.0232
+  },
+  {
+    "execution": 3,
+    "total_time": 60.0,
+    "real_time": 76.46,
+    "coverage_percent": 86.67,
+    "covered_area_m2": 3.723,
+    "total_cleanable_area_m2": 4.295,
+    "energy": 141.38,
+    "distance": 44.97,
+    "collisions": 43,
+    "efficiency": 0.0036,
+    "area_per_energy": 0.0263
   }
 ]
